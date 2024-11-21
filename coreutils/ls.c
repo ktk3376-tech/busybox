@@ -217,6 +217,7 @@ SPLIT_SUBDIR    = 2,
 	IF_FEATURE_LS_FOLLOWLINKS("LH")  /* 2, 26 */ \
 	IF_FEATURE_HUMAN_READABLE("h")   /* 1, 27 */ \
 	IF_FEATURE_LS_WIDTH("T:w:")      /* 2, 29 */
+	"f:"
 
 enum {
 	OPT_C = (1 << 0),
@@ -252,6 +253,7 @@ enum {
 	OPTBIT_full_time = OPTBIT_T + 2 * ENABLE_FEATURE_LS_WIDTH,
 	OPTBIT_dirs_first,
 	OPTBIT_color, /* 31 */
+	OPTBIT_filter = OPTBIT_color + 1,
 	/* with long opts, we use all 32 bits */
 
 	OPT_F = (1 << OPTBIT_F) * ENABLE_FEATURE_LS_FILETYPES,
@@ -274,6 +276,7 @@ enum {
 	OPT_full_time  = (1 << OPTBIT_full_time ) * ENABLE_LONG_OPTS,
 	OPT_dirs_first = (1 << OPTBIT_dirs_first) * ENABLE_LONG_OPTS,
 	OPT_color      = (1 << OPTBIT_color     ) * ENABLE_FEATURE_LS_COLOR,
+	OPT_filter = (1 << OPTBIT_filter),
 };
 
 /*
@@ -759,6 +762,13 @@ static struct dnode *my_stat(const char *fullname, const char *name, int force_f
 	return cur;
 }
 
+static int has_extension(const char *filename, const char *extension) {
+    const char *dot = strrchr(filename, '.'); // 파일명에서 마지막 '.' 찾기
+    if (!dot || dot == filename) return 0;    // 확장자가 없으면 제외
+    return strcmp(dot + 1, extension) == 0;   // 확장자가 일치하면 1 반환
+}
+
+
 static unsigned count_dirs(struct dnode **dn, int which)
 {
 	unsigned dirs, all;
@@ -939,6 +949,12 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 	while ((entry = readdir(dir)) != NULL) {
 		char *fullname;
 
+		if (opt & OPT_filter) {
+            if (!has_extension(entry->d_name, filter_extension)) {
+                continue;  // 필터 조건에 맞지 않는 파일 건너뛰기
+            }
+        }
+
 		/* are we going to list the file- it may be . or .. or a hidden file */
 		if (entry->d_name[0] == '.') {
 			if (!(option_mask32 & (OPT_a|OPT_A)))
@@ -1110,6 +1126,8 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	/* process options */
+	const char *filter_extension = NULL;
+
 	opt = getopt32long(argv, "^"
 		ls_options
 			"\0"
@@ -1129,7 +1147,8 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_LS_TIMESTAMPS(":c-u:u-c") /* mtime/atime */
 			/* -w NUM: */
 			IF_FEATURE_LS_WIDTH(":w+")
-		, ls_longopts
+		, ls_longopts,
+		&filter_extension
 		IF_FEATURE_LS_WIDTH(, /*-T*/ NULL, /*-w*/ &G_terminal_width)
 		IF_FEATURE_LS_COLOR(, &color_opt)
 	);
